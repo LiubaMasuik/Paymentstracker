@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Спільні витрати</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--tx:#1d1d1b;--mu:#6d6b66;--bd:#e3e0d8;--ac:#2f6f5e;--acx:#fff;--pos:#1f7a4d;--neg:#b3412f;--chip:#efece4;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171716;--card:#222220;--tx:#efede6;--mu:#a09d94;--bd:#37352f;--ac:#5fb59f;--acx:#10201b;--pos:#6fd09b;--neg:#f0907c;--chip:#2e2d29}}
+:root[data-theme="dark"]{--bg:#171716;--card:#222220;--tx:#efede6;--mu:#a09d94;--bd:#37352f;--ac:#5fb59f;--acx:#10201b;--pos:#6fd09b;--neg:#f0907c;--chip:#2e2d29}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:720px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}
+.sub{color:var(--mu);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;margin-bottom:16px}
+h2{font-size:17px;margin:0 0 12px}
+label{display:block;font-size:13px;color:var(--mu);margin:0 0 4px}
+input[type=text],input[type=number],select{width:100%;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);font:inherit}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.full{margin-bottom:12px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{padding:7px 12px;border-radius:999px;background:var(--chip);border:1px solid var(--bd);cursor:pointer;user-select:none;font-size:14px}
+.chip.on{background:var(--ac);color:var(--acx);border-color:var(--ac)}
+button{font:inherit;cursor:pointer;border-radius:10px;border:0}
+.btn{background:var(--ac);color:var(--acx);padding:11px 18px;width:100%;font-weight:600;margin-top:14px}
+.link{background:none;color:var(--mu);padding:4px 8px;font-size:13px;text-decoration:underline}
+.exp{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--bd)}
+.exp:first-of-type{border-top:0}
+.exp small{color:var(--mu);display:block}
+.amt{font-weight:600;white-space:nowrap}
+.x{background:none;color:var(--mu);font-size:18px;padding:0 6px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+td,th{padding:8px 4px;text-align:right;border-top:1px solid var(--bd)}
+th{font-size:12px;color:var(--mu);font-weight:500;border-top:0}
+td:first-child,th:first-child{text-align:left}
+.pos{color:var(--pos)}.neg{color:var(--neg)}
+.pay{display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--bd);flex-wrap:wrap}
+.pay:first-of-type{border-top:0}
+.pay b{font-weight:600}
+.empty{color:var(--mu);font-size:14px}
+.top{display:flex;justify-content:space-between;align-items:center}
+</style>
+</head>
+<body>
+<main>
+  <h1>Спільні витрати</h1>
+  <p class="sub">Додавайте витрати — розрахунок оновлюється автоматично.</p>
+
+  <div class="card">
+    <h2>Нова витрата</h2>
+    <div class="full"><label>На що</label><input type="text" id="desc" placeholder="Напр. продукти, таксі, піца"></div>
+    <div class="row">
+      <div><label>Сума, ₴</label><input type="text" id="amount" inputmode="decimal" autocomplete="off" placeholder="0,00"></div>
+      <div><label>Хто заплатив</label><select id="payer"></select></div>
+    </div>
+    <label>Ділимо порівну між <button class="link" id="all" type="button">усі</button><button class="link" id="none" type="button">нікого</button></label>
+    <div class="chips" id="chips"></div>
+    <div id="msg" class="neg" style="font-size:14px;margin-top:10px;min-height:1px"></div>
+    <button class="btn" id="add" type="button">Додати витрату</button>
+  </div>
+
+  <div class="card">
+    <h2>Хто кому винен</h2>
+    <div id="settle"></div>
+  </div>
+
+  <div class="card">
+    <h2>Баланс кожного</h2>
+    <div style="overflow-x:auto"><table id="bal"></table></div>
+  </div>
+
+  <div class="card">
+    <div class="top"><h2>Витрати</h2><button class="link" id="reset" type="button">Очистити все</button></div>
+    <div id="list"></div>
+  </div>
+</main>
+<script>
+const PEOPLE=["Руслана","Наталя","Юля","Юра","Любов"];
+const KEY="split-expenses-v1";
+let expenses=[];
+let sel=new Set(PEOPLE);
+try{const s=localStorage.getItem(KEY);if(s)expenses=JSON.parse(s)||[]}catch(e){}
+const $=id=>document.getElementById(id);
+const fmt=c=>(c/100).toLocaleString("uk-UA",{minimumFractionDigits:2,maximumFractionDigits:2})+" ₴";
+function save(){try{localStorage.setItem(KEY,JSON.stringify(expenses))}catch(e){}}
+
+function renderForm(){
+  $("payer").innerHTML=PEOPLE.map(p=>`<option>${p}</option>`).join("");
+  $("chips").innerHTML=PEOPLE.map(p=>`<span class="chip ${sel.has(p)?"on":""}" data-p="${p}">${p}</span>`).join("");
+}
+$("chips").onclick=e=>{const p=e.target.dataset.p;if(!p)return;sel.has(p)?sel.delete(p):sel.add(p);const v=$("payer").value;renderForm();$("payer").value=v};
+$("all").onclick=()=>{sel=new Set(PEOPLE);const v=$("payer").value;renderForm();$("payer").value=v};
+$("none").onclick=()=>{sel=new Set();const v=$("payer").value;renderForm();$("payer").value=v};
+
+$("add").onclick=()=>{
+  const cents=Math.round(parseFloat(String($("amount").value).replace(/\s/g,"").replace(",","."))*100);
+  $("msg").textContent="";
+  if(!(cents>0)){$("msg").textContent="Введіть суму числом, напр. 125,50";$("amount").focus();return}
+  if(sel.size===0){$("msg").textContent="Оберіть, між ким ділити.";return}
+  expenses.push({id:Date.now(),desc:$("desc").value.trim()||"Витрата",cents,payer:$("payer").value,who:PEOPLE.filter(p=>sel.has(p))});
+  save();$("desc").value="";$("amount").value="";render();
+};
+$("list").onclick=e=>{const id=e.target.dataset.del;if(!id)return;expenses=expenses.filter(x=>x.id!=id);save();render()};
+let rs=false;
+$("reset").onclick=()=>{
+  if(!expenses.length)return;
+  if(!rs){rs=true;$("reset").textContent="Натисніть ще раз, щоб підтвердити";setTimeout(()=>{rs=false;$("reset").textContent="Очистити все"},3000);return}
+  rs=false;$("reset").textContent="Очистити все";expenses=[];save();render();
+};
+
+function compute(){
+  const paid={},share={};
+  PEOPLE.forEach(p=>{paid[p]=0;share[p]=0});
+  expenses.forEach(x=>{
+    paid[x.payer]+=x.cents;
+    const n=x.who.length,base=Math.floor(x.cents/n);let rem=x.cents-base*n;
+    x.who.forEach(p=>{share[p]+=base+(rem-->0?1:0)});
+  });
+  const net={};PEOPLE.forEach(p=>net[p]=paid[p]-share[p]);
+  const cr=PEOPLE.filter(p=>net[p]>0).map(p=>({p,v:net[p]}));
+  const db=PEOPLE.filter(p=>net[p]<0).map(p=>({p,v:-net[p]}));
+  const tx=[];
+  while(cr.length&&db.length){
+    cr.sort((a,b)=>b.v-a.v);db.sort((a,b)=>b.v-a.v);
+    const c=cr[0],d=db[0],m=Math.min(c.v,d.v);
+    tx.push({from:d.p,to:c.p,v:m});c.v-=m;d.v-=m;
+    if(c.v===0)cr.shift();if(d.v===0)db.shift();
+  }
+  return{paid,share,net,tx};
+}
+
+function render(){
+  const{paid,share,net,tx}=compute();
+  $("settle").innerHTML=tx.length?tx.map(t=>`<div class="pay"><b>${t.from}</b> → <b>${t.to}</b><span class="amt neg" style="margin-left:auto">${fmt(t.v)}</span></div>`).join(""):`<div class="empty">${expenses.length?"Усі в розрахунку 🎉":"Поки що немає витрат."}</div>`;
+  $("bal").innerHTML=`<tr><th>Хто</th><th>Заплатив</th><th>Його частка</th><th>Баланс</th></tr>`+PEOPLE.map(p=>{
+    const n=net[p];return`<tr><td>${p}</td><td>${fmt(paid[p])}</td><td>${fmt(share[p])}</td><td class="amt ${n>0?"pos":n<0?"neg":""}">${n>0?"+":""}${fmt(n)}</td></tr>`}).join("");
+  $("list").innerHTML=expenses.length?expenses.slice().reverse().map(x=>`<div class="exp"><div>${x.desc.replace(/[<>&]/g,"")}<small>платить: ${x.payer} · ділять: ${x.who.length===PEOPLE.length?"усі":x.who.join(", ")}</small></div><div class="amt">${fmt(x.cents)}<button class="x" data-del="${x.id}" title="Видалити">×</button></div></div>`).join(""):`<div class="empty">Додайте першу витрату вище.</div>`;
+}
+renderForm();render();
+</script>
+</body>
+</html>
